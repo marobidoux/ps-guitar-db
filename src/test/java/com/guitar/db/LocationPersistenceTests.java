@@ -1,6 +1,7 @@
 package com.guitar.db;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 import java.util.List;
 
@@ -15,16 +16,23 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.guitar.db.model.Location;
-import com.guitar.db.repository.LocationRepository;
+import com.guitar.db.repository.LocationJpaRepository;
 
-@ContextConfiguration(locations={"classpath:com/guitar/db/applicationTests-context.xml"})
+@ContextConfiguration(locations = { "classpath:com/guitar/db/applicationTests-context.xml" })
 @RunWith(SpringJUnit4ClassRunner.class)
 public class LocationPersistenceTests {
+
 	@Autowired
-	private LocationRepository locationRepository;
+	private LocationJpaRepository locationJpaRepository;
 
 	@PersistenceContext
 	private EntityManager entityManager;
+
+	@Test
+	public void testJpaFind() {
+		List<Location> locations = locationJpaRepository.findAll();
+		assertNotNull(locations);
+	}
 
 	@Test
 	@Transactional
@@ -32,35 +40,116 @@ public class LocationPersistenceTests {
 		Location location = new Location();
 		location.setCountry("Canada");
 		location.setState("British Columbia");
-		location = locationRepository.create(location);
-		
-		// clear the persistence context so we don't return the previously cached location object
+		location = locationJpaRepository.saveAndFlush(location);
+
+		// clear the persistence context so we don't return the previously cached
+		// location object
 		// this is a test only thing and normally doesn't need to be done in prod code
 		entityManager.clear();
 
-		Location otherLocation = locationRepository.find(location.getId());
+		Location otherLocation = locationJpaRepository.findOne(location.getId());
 		assertEquals("Canada", otherLocation.getCountry());
 		assertEquals("British Columbia", otherLocation.getState());
-		
-		//delete BC location now
-		locationRepository.delete(otherLocation);
+
+		// delete BC location now
+		locationJpaRepository.delete(otherLocation);
 	}
 
 	@Test
 	public void testFindWithLike() throws Exception {
-		List<Location> locs = locationRepository.getLocationByStateName("New");
+		List<Location> locs = locationJpaRepository.findByStateStartingWithIgnoreCaseOrderByStateDesc("new");
+		
+		locs.forEach((location) -> {
+		System.out.println(location.getState());	
+		});
+		
 		assertEquals(4, locs.size());
 	}
 
 	@Test
-	@Transactional  //note this is needed because we will get a lazy load exception unless we are in a tx
+	@Transactional // note this is needed because we will get a lazy load exception unless we are
+					// in a tx
 	public void testFindWithChildren() throws Exception {
-		Location arizona = locationRepository.find(3L);
+		Location arizona = locationJpaRepository.findOne(3L);
 		assertEquals("United States", arizona.getCountry());
 		assertEquals("Arizona", arizona.getState());
-		
+
 		assertEquals(1, arizona.getManufacturers().size());
-		
+
 		assertEquals("Fender Musical Instruments Corporation", arizona.getManufacturers().get(0).getName());
 	}
+
+	@Test
+	public void testFindByStateOrCountry_CountryExists() {
+		List<Location> locs = locationJpaRepository.findByStateOrCountry("Nope", "United States");
+		assertNotNull(locs);
+
+		assertEquals(50, locs.size());
+	}
+
+	@Test
+	public void testFindByStateOrCountry_StateExists() {
+		List<Location> locs = locationJpaRepository.findByStateOrCountry("Utah", "Nope");
+		assertNotNull(locs);
+
+		assertEquals(1, locs.size());
+
+		Location location = locs.get(0);
+		assertNotNull(location);
+		assertEquals("Utah", location.getState());
+	}
+	
+	@Test
+	public void testFindByStateOrCountry_NoneExist() {
+		List<Location> locs = locationJpaRepository.findByStateOrCountry("Nope", "Nope");
+		assertNotNull(locs);
+
+		assertEquals(0, locs.size());
+	}
+
+	@Test
+	public void testFindByStateAndCountry_BothExist() {
+		List<Location> locs = locationJpaRepository.findByStateAndCountry("Utah", "United States");
+		assertNotNull(locs);
+
+		assertEquals(1, locs.size());
+
+		Location location = locs.get(0);
+		assertNotNull(location);
+		assertEquals("Utah", location.getState());
+		assertEquals("United States", location.getCountry());
+	}
+	
+	@Test
+	public void testFindByStateAndCountry_StateExists() {
+		List<Location> locs = locationJpaRepository.findByStateAndCountry("Utah", "Nope");
+		assertNotNull(locs);
+
+		assertEquals(0, locs.size());
+	}
+	
+	@Test
+	public void testFindByStateAndCountry_CountryExists() {
+		List<Location> locs = locationJpaRepository.findByStateAndCountry("Nope", "United States");
+		assertNotNull(locs);
+
+		assertEquals(0, locs.size());
+	}
+	
+	@Test
+	public void testFindByStateAndCountry_NoneExist() {
+		List<Location> locs = locationJpaRepository.findByStateAndCountry("Nope", "Nope");
+		assertNotNull(locs);
+
+		assertEquals(0, locs.size());
+	}
+	
+	@Test
+	public void testFindByStateEqualsNot() {
+		List<Location> locs = locationJpaRepository.findByStateNot("Utah");
+		
+		assertNotNull(locs);
+		assertEquals(49, locs.size());
+	}
+
 }
